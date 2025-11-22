@@ -1,6 +1,7 @@
 package com.fortebank.fraud.transaction.service;
 
 import com.fortebank.fraud.customer.dto.CustomerStats;
+import com.fortebank.fraud.customer.service.BehaviorAnalysisService;
 import com.fortebank.fraud.customer.service.CustomerStatsService;
 import com.fortebank.fraud.transaction.dto.RiskFactorDTO;
 import com.fortebank.fraud.transaction.dto.TransactionAnalysisDTO;
@@ -21,14 +22,15 @@ import java.util.List;
 public class FraudDetectionService {
     
     private final CustomerStatsService customerStatsService;
+    private final BehaviorAnalysisService behaviorAnalysisService;  // ← НОВОЕ!
     
     // Пороговые значения
-    private static final double HIGH_AMOUNT_MULTIPLIER = 3.0; // Сумма в 3 раза больше средней
+    private static final double HIGH_AMOUNT_MULTIPLIER = 3.0;
     private static final int NIGHT_START_HOUR = 0;
     private static final int NIGHT_END_HOUR = 6;
     private static final int MAX_TRANSACTIONS_PER_HOUR = 3;
     private static final int MAX_TRANSACTIONS_PER_DAY = 15;
-    private static final BigDecimal LARGE_AMOUNT_THRESHOLD = new BigDecimal("100000"); // 100k
+    private static final BigDecimal LARGE_AMOUNT_THRESHOLD = new BigDecimal("100000");
     
     /**
      * Анализировать транзакцию на мошенничество
@@ -82,7 +84,7 @@ public class FraudDetectionService {
             totalScore += frequencyRisk.getScore();
         }
         
-        // 5. Большая сумма (абсолютное значение)
+        // 5. Большая сумма
         if (transaction.getAmount().compareTo(LARGE_AMOUNT_THRESHOLD) > 0) {
             RiskFactorDTO largeAmountRisk = RiskFactorDTO.builder()
                     .name("Очень большая сумма")
@@ -93,6 +95,23 @@ public class FraudDetectionService {
                     .build();
             riskFactors.add(largeAmountRisk);
             totalScore += 20;
+        }
+        
+        // ✨ 6. НОВОЕ: Анализ поведенческих паттернов
+        try {
+            List<RiskFactorDTO> behaviorRisks = behaviorAnalysisService.analyzeBehaviorPatterns(
+                    transaction.getCustomerId(),
+                    transaction.getTransactionDateTime().toLocalDate()
+            );
+            
+            riskFactors.addAll(behaviorRisks);
+            totalScore += behaviorRisks.stream()
+                    .mapToInt(RiskFactorDTO::getScore)
+                    .sum();
+                    
+            log.debug("Добавлено {} поведенческих факторов риска", behaviorRisks.size());
+        } catch (Exception e) {
+            log.warn("Не удалось получить поведенческие факторы риска: {}", e.getMessage());
         }
         
         // Рассчитать вероятность мошенничества (0-1)
@@ -118,7 +137,7 @@ public class FraudDetectionService {
      */
     private RiskFactorDTO analyzeAmount(BigDecimal amount, CustomerStats stats) {
         if (stats.getTotalTransactions() == 0) {
-            return null; // Нет истории
+            return null;
         }
         
         BigDecimal avgAmount = stats.getAvgAmount();
@@ -193,11 +212,11 @@ public class FraudDetectionService {
      */
     private String determineDecision(double fraudProbability, int riskScore) {
         if (fraudProbability >= 0.85 || riskScore >= 85) {
-            return "BLOCK"; // Заблокировать
+            return "BLOCK";
         } else if (fraudProbability >= 0.50 || riskScore >= 50) {
-            return "REVIEW"; // Требует проверки
+            return "REVIEW";
         } else {
-            return "APPROVE"; // Одобрить
+            return "APPROVE";
         }
     }
 }

@@ -13,7 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/batch")
+@RequestMapping("/api/batch" )
 @RequiredArgsConstructor
 @Slf4j
 public class BatchController {
@@ -67,6 +67,20 @@ public class BatchController {
         return ResponseEntity.ok(ApiResponse.success(
             history,
             "История загружена"
+        ));
+    }
+
+    @PostMapping("/upload-behavior")
+    public ResponseEntity<ApiResponse<String>> uploadBehaviorPatterns(
+            @RequestParam("file") MultipartFile file) {
+        
+        log.info("Загрузка поведенческих паттернов: {}", file.getOriginalFilename());
+        
+        int saved = batchProcessingService.processBehaviorPatternsFile(file);
+        
+        return ResponseEntity.ok(ApiResponse.success(
+            "Загружено " + saved + " поведенческих паттернов",
+            "Паттерны успешно загружены"
         ));
     }
 }

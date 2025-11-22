@@ -3,6 +3,8 @@ package com.fortebank.fraud.batch.service;
 import com.fortebank.fraud.batch.entity.BatchJob;
 import com.fortebank.fraud.batch.entity.BatchJobStatus;
 import com.fortebank.fraud.batch.repository.BatchJobRepository;
+import com.fortebank.fraud.customer.entity.CustomerBehaviorPattern;
+import com.fortebank.fraud.customer.repository.CustomerBehaviorPatternRepository;
 import com.fortebank.fraud.transaction.entity.Transaction;
 import com.fortebank.fraud.transaction.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,20 +22,21 @@ import java.util.List;
 public class BatchProcessingService {
     
     private final ExcelParserService excelParser;
+    private final BehaviorPatternParserService behaviorPatternParser;
     private final TransactionRepository transactionRepository;
     private final BatchJobRepository batchJobRepository;
+    private final CustomerBehaviorPatternRepository behaviorPatternRepository;
     
     /**
      * Обработать Excel файл с транзакциями
      */
     @Transactional
     public BatchJob processExcelFile(MultipartFile file, String createdBy) {
-        // Валидация файла
+        // ... (существующий код остается без изменений)
         if (!excelParser.isValidExcelFile(file)) {
             throw new IllegalArgumentException("Неверный формат файла. Ожидается .xlsx или .xls");
         }
         
-        // Создать BatchJob
         BatchJob batchJob = BatchJob.builder()
                 .filename(file.getOriginalFilename())
                 .status(BatchJobStatus.PROCESSING)
@@ -44,14 +47,12 @@ public class BatchProcessingService {
         batchJob = batchJobRepository.save(batchJob);
         
         try {
-            // Парсить Excel
             log.info("Начинаем парсинг файла: {}", file.getOriginalFilename());
             List<Transaction> transactions = excelParser.parseExcelFile(file);
             
             batchJob.setTotalRecords(transactions.size());
             batchJobRepository.save(batchJob);
             
-            // Сохранить транзакции батчами
             int batchSize = 500;
             int processed = 0;
             int failed = 0;
@@ -72,7 +73,6 @@ public class BatchProcessingService {
                     }
                 }
                 
-                // Обновить прогресс
                 batchJob.setProcessedRecords(processed);
                 batchJob.setFailedRecords(failed);
                 batchJobRepository.save(batchJob);
@@ -80,7 +80,6 @@ public class BatchProcessingService {
                 log.info("Обработано {}/{} транзакций", processed, transactions.size());
             }
             
-            // Завершить BatchJob
             batchJob.setStatus(BatchJobStatus.COMPLETED);
             batchJob.setCompletedAt(LocalDateTime.now());
             batchJobRepository.save(batchJob);
@@ -97,6 +96,45 @@ public class BatchProcessingService {
             batchJob.setCompletedAt(LocalDateTime.now());
             batchJobRepository.save(batchJob);
             
+            throw new RuntimeException("Ошибка обработки файла: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Обработать Excel файл с поведенческими паттернами
+     */
+    @Transactional
+    public int processBehaviorPatternsFile(MultipartFile file) {
+        log.info("Начинаем обработку поведенческих паттернов: {}", file.getOriginalFilename());
+        
+        // Валидация
+        if (!behaviorPatternParser.isValidExcelFile(file)) {
+            throw new IllegalArgumentException("Неверный формат файла. Ожидается .xlsx или .xls");
+        }
+        
+        try {
+            // Парсим Excel
+            List<CustomerBehaviorPattern> patterns = behaviorPatternParser.parseExcelFile(file);
+            
+            // Сохраняем батчами
+            int saved = 0;
+            int batchSize = 500;
+            
+            for (int i = 0; i < patterns.size(); i += batchSize) {
+                int end = Math.min(i + batchSize, patterns.size());
+                List<CustomerBehaviorPattern> batch = patterns.subList(i, end);
+                
+                behaviorPatternRepository.saveAll(batch);
+                saved += batch.size();
+                
+                log.info("Сохранено {}/{} паттернов", saved, patterns.size());
+            }
+            
+            log.info("Обработка завершена. Сохранено {} поведенческих паттернов", saved);
+            return saved;
+            
+        } catch (Exception e) {
+            log.error("Ошибка обработки файла поведенческих паттернов: {}", e.getMessage(), e);
             throw new RuntimeException("Ошибка обработки файла: " + e.getMessage(), e);
         }
     }

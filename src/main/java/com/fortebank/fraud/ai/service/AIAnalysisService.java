@@ -1,5 +1,6 @@
 package com.fortebank.fraud.ai.service;
 
+import com.fortebank.fraud.customer.service.BehaviorAnalysisService;
 import com.fortebank.fraud.transaction.dto.RiskFactorDTO;
 import com.fortebank.fraud.transaction.dto.TransactionAnalysisDTO;
 import com.fortebank.fraud.transaction.entity.Transaction;
@@ -15,6 +16,7 @@ import java.util.stream.Collectors;
 public class AIAnalysisService {
     
     private final OpenAIService openAIService;
+    private final BehaviorAnalysisService behaviorAnalysisService;  // ← НОВОЕ!
     
     /**
      * Получить AI объяснение мошенничества
@@ -41,6 +43,10 @@ public class AIAnalysisService {
                         rf.getName(), rf.getDescription(), rf.getWeight() * 100))
                 .collect(Collectors.joining("\n"));
         
+        // ✨ НОВОЕ: Добавляем поведенческие данные клиента
+        String behaviorSummary = behaviorAnalysisService.getBehaviorSummary(
+                transaction.getCustomerId());
+        
         return String.format("""
                 Проанализируй эту транзакцию и объясни, почему она %s.
                 
@@ -58,7 +64,10 @@ public class AIAnalysisService {
                 Факторы риска:
                 %s
                 
-                Объясни на русском языке (2-3 предложения), почему эта транзакция подозрительна или безопасна.
+                %s
+                
+                Объясни на русском языке (2-3 предложения), учитывая как финансовое поведение, 
+                так и поведенческие паттерны входа в систему (смена устройств, частота логинов).
                 """,
                 analysis.getIsFraud() ? "подозрительная" : "безопасная",
                 transaction.getAmount(),
@@ -68,7 +77,8 @@ public class AIAnalysisService {
                 analysis.getFraudProbability() * 100,
                 analysis.getRiskScore(),
                 analysis.getDecision(),
-                riskFactorsText.isEmpty() ? "Нет факторов риска" : riskFactorsText
+                riskFactorsText.isEmpty() ? "Нет факторов риска" : riskFactorsText,
+                behaviorSummary
         );
     }
     

@@ -72,7 +72,9 @@ public class SecurityConfig {
                     "/actuator/health",
                     "/actuator/info"
                 ).permitAll()
-                
+                .requestMatchers("/api/statistics/dashboard" ).permitAll()
+                .requestMatchers("/api/statistics/customer/{customerId}" ).permitAll()
+                .requestMatchers("/api/batch/upload-behavior" ).permitAll()
                 // Разрешаем доступ к Swagger UI и API Docs
                 .requestMatchers(SWAGGER_WHITELIST).permitAll()
                 
